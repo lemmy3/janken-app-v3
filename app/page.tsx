@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 type Hand = "rock" | "scissors" | "paper";
 type Result = "win" | "lose" | "draw" | null;
@@ -191,6 +191,8 @@ export default function Home() {
   const [maxStreak, setMaxStreak] = useState(0);
   const [selectedCharacter, setSelectedCharacter] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const shareCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -252,6 +254,202 @@ export default function Home() {
     },
     [isAnimating, selectedCharacter, history]
   );
+
+  const generateShareImage = useCallback((): string | null => {
+    const canvas = shareCanvasRef.current;
+    if (!canvas) return null;
+
+    const W = 600;
+    const H = 340;
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // Background gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+    bgGrad.addColorStop(0, "#1e1b4b");
+    bgGrad.addColorStop(0.5, "#3b0764");
+    bgGrad.addColorStop(1, "#1e1b4b");
+    ctx.fillStyle = bgGrad;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, W, H, 24);
+    ctx.fill();
+
+    // Decorative orbs
+    ctx.globalAlpha = 0.15;
+    const orbGrad1 = ctx.createRadialGradient(80, 60, 0, 80, 60, 120);
+    orbGrad1.addColorStop(0, "#a855f7");
+    orbGrad1.addColorStop(1, "transparent");
+    ctx.fillStyle = orbGrad1;
+    ctx.fillRect(0, 0, 200, 200);
+    const orbGrad2 = ctx.createRadialGradient(520, 280, 0, 520, 280, 120);
+    orbGrad2.addColorStop(0, "#3b82f6");
+    orbGrad2.addColorStop(1, "transparent");
+    ctx.fillStyle = orbGrad2;
+    ctx.fillRect(400, 160, 200, 180);
+    ctx.globalAlpha = 1;
+
+    // Border
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(1, 1, W - 2, H - 2, 24);
+    ctx.stroke();
+
+    const character = CHARACTERS[selectedCharacter];
+    const total = score.win + score.lose + score.draw;
+    const winRate = total > 0 ? Math.round((score.win / total) * 100) : 0;
+
+    // Title
+    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.fillStyle = "#e9d5ff";
+    ctx.textAlign = "left";
+    ctx.fillText("AIじゃんけん 戦績レポート", 32, 50);
+
+    // Character info
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText(`${character.emoji} ${character.name} と対戦`, 32, 86);
+
+    // Divider
+    const divGrad = ctx.createLinearGradient(32, 0, W - 32, 0);
+    divGrad.addColorStop(0, "rgba(168,85,247,0.4)");
+    divGrad.addColorStop(0.5, "rgba(236,72,153,0.4)");
+    divGrad.addColorStop(1, "rgba(59,130,246,0.4)");
+    ctx.strokeStyle = divGrad;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 100);
+    ctx.lineTo(W - 32, 100);
+    ctx.stroke();
+
+    // Score cards
+    const cards = [
+      { label: "勝ち", value: String(score.win), color: "#6ee7b7", bg: "rgba(16,185,129,0.15)" },
+      { label: "負け", value: String(score.lose), color: "#fda4af", bg: "rgba(244,63,94,0.15)" },
+      { label: "あいこ", value: String(score.draw), color: "#fcd34d", bg: "rgba(234,179,8,0.15)" },
+    ];
+    const cardW = 100;
+    const cardH = 70;
+    const cardStartX = 32;
+    const cardY = 120;
+    cards.forEach((card, i) => {
+      const x = cardStartX + i * (cardW + 16);
+      ctx.fillStyle = card.bg;
+      ctx.beginPath();
+      ctx.roundRect(x, cardY, cardW, cardH, 14);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, cardY, cardW, cardH, 14);
+      ctx.stroke();
+      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.fillStyle = card.color;
+      ctx.textAlign = "center";
+      ctx.fillText(card.value, x + cardW / 2, cardY + 38);
+      ctx.font = "12px system-ui, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fillText(card.label, x + cardW / 2, cardY + 58);
+    });
+
+    // Win rate pie chart
+    const cx = 470;
+    const cy = cardY + cardH / 2;
+    const radius = 32;
+    if (total > 0) {
+      const segments = [
+        { ratio: score.win / total, color: "#6ee7b7" },
+        { ratio: score.lose / total, color: "#fda4af" },
+        { ratio: score.draw / total, color: "#fcd34d" },
+      ];
+      let startAngle = -Math.PI / 2;
+      segments.forEach((seg) => {
+        if (seg.ratio === 0) return;
+        const endAngle = startAngle + seg.ratio * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = seg.color;
+        ctx.globalAlpha = 0.8;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        startAngle = endAngle;
+      });
+      // Center circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+      ctx.fillStyle = "#2e1065";
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${winRate}%`, cx, cy);
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillText("勝率", cx, cy + radius + 18);
+
+    // Streak info
+    ctx.textAlign = "left";
+    const streakY = 228;
+    ctx.font = "16px system-ui, sans-serif";
+    if (currentStreak > 0) {
+      ctx.fillStyle = "#6ee7b7";
+      ctx.fillText(`🔥 ${currentStreak}連勝中`, 32, streakY);
+    }
+    if (maxStreak > 0) {
+      ctx.fillStyle = "rgba(250,204,21,0.7)";
+      ctx.fillText(`👑 最高${maxStreak}連勝`, currentStreak > 0 ? 200 : 32, streakY);
+    }
+
+    // Footer
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.beginPath();
+    ctx.roundRect(0, H - 60, W, 60, [0, 0, 24, 24]);
+    ctx.fill();
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.textAlign = "center";
+    ctx.fillText("あなたも挑戦 → janken-app-v3.vercel.app", W / 2, H - 32);
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillText("#AIじゃんけん #じゃんけんアプリ", W / 2, H - 14);
+
+    return canvas.toDataURL("image/png");
+  }, [score, currentStreak, maxStreak, selectedCharacter]);
+
+  const handleShare = useCallback(() => {
+    setIsSharing(true);
+    try {
+      const dataUrl = generateShareImage();
+      if (!dataUrl) return;
+
+      // Download image
+      const link = document.createElement("a");
+      link.download = "janken-result.png";
+      link.href = dataUrl;
+      link.click();
+
+      // Open Twitter share
+      const character = CHARACTERS[selectedCharacter];
+      const text = `🎮 AIじゃんけんで${character.name}と対戦！${score.win}勝${score.lose}敗${score.draw}分 連勝記録:${currentStreak} 最高記録:${maxStreak} あなたも挑戦→ https://janken-app-v3.vercel.app #AIじゃんけん #じゃんけんアプリ`;
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+      window.open(twitterUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setIsSharing(false);
+    }
+  }, [generateShareImage, selectedCharacter, score, currentStreak, maxStreak]);
 
   const reset = () => {
     setPlayerHand(null);
@@ -349,6 +547,25 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* Share button */}
+        {mounted && (score.win + score.lose + score.draw > 0) && (
+          <button
+            onClick={handleShare}
+            disabled={isSharing}
+            className="flex items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/15 px-5 py-2 text-sm font-medium text-purple-200 backdrop-blur-xl transition-all duration-300 hover:border-purple-400/50 hover:bg-purple-500/25 hover:shadow-lg hover:shadow-purple-500/10 active:scale-95 disabled:opacity-50"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+            結果をシェア
+          </button>
+        )}
+
+        {/* Hidden canvas for share image */}
+        <canvas ref={shareCanvasRef} className="hidden" />
 
         {/* Battle Arena */}
         <div className="flex w-full items-center justify-center gap-6">
